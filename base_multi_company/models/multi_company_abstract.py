@@ -39,7 +39,6 @@ class MultiCompanyAbstract(models.AbstractModel):
             else:
                 record.company_id = record.company_ids[:1].id
 
-    @api.multi
     def _inverse_company_id(self):
         for record in self:
             # Checking id not falsy due to bad data that can put '' in id
