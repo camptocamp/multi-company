@@ -6,7 +6,7 @@
     "Summary": "Module that adds possibility for intercompany Delivery-Reception",
     "version": "14.0.1.1.1",
     "author": "Camptocamp, Odoo Community Association (OCA)",
-    "website": "https://github.com/OCA/stock-logistics-workflow",
+    "website": "https://github.com/OCA/multi-company",
     "category": "Warehouse Management",
     "depends": ["stock"],
     "installable": True,
