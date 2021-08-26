@@ -7,4 +7,6 @@ from odoo import fields, models
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
-    intercompany_in_type_id = fields.Many2one(related="company_id.intercompany_in_type_id", readonly=False) 
+    intercompany_in_type_id = fields.Many2one(
+        related="company_id.intercompany_in_type_id", readonly=False
+    )
