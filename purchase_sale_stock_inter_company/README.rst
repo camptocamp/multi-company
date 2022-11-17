@@ -2,9 +2,9 @@
    :target: http://www.gnu.org/licenses/agpl-3.0-standalone.html
    :alt: License: AGPL-3
 
-===========================
-Purchase Sale Inter Company
-===========================
+=================================
+Purchase Sale Stock Inter Company
+=================================
 
 This module is useful if there are multiple companies in the same Odoo database and those companies sell goods or services among themselves.
 It allows to create a sale order in company A from a purchase order in company B.
@@ -20,7 +20,7 @@ Configuration
 =============
 
 To configure this module, you need to:
-#. go to the menu *Settings > Companies > Companies*.
+#. go to the menu *General Settings > Companies > Companies*.
 #. Select one of the companies.
 #. Go to the tab *Inter-Company* then the group *Purchase To Sale*.
 #. Select the *Warehouse For Sale Orders*, it is the warehouse that will be used to automatically generate the sale order in the other company.

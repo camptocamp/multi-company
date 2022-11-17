@@ -4,7 +4,7 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
 {
-    "name": "Inter Company Module for Purchase to Sale Order",
+    "name": "Inter Company Module for Purchase to Sale Order with stock functionality",
     "summary": "Intercompany PO/SO rules",
     "version": "15.0.1.0.0",
     "category": "Purchase Management",
@@ -12,6 +12,7 @@
     "author": "Odoo SA, Akretion, Tecnativa, Odoo Community Association (OCA)",
     "license": "AGPL-3",
     "installable": True,
+    "auto_install": True,
     "depends": ["purchase_sale_inter_company", "stock"],
     "data": ["views/res_config_view.xml"],
 }
