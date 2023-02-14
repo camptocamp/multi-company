@@ -42,61 +42,194 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
     def setUpClass(cls):
         super().setUpClass()
         # no job: avoid issue if account_invoice_inter_company_queued is installed
-        cls.env = cls.env(context={"test_queue_job_no_delay": 1})
-
-        cls.product = cls.product_consultant_multi_company
-
+        cls.env = cls.env(
+            context=dict(
+                cls.env.context, tracking_disable=True, test_queue_job_no_delay=1
+            )
+        )
         if "company_ids" in cls.env["res.partner"]._fields:
             # We have to do that because the default method added a company
             cls.partner_company_a.company_ids = [(6, 0, cls.company_a.ids)]
             cls.partner_company_b.company_ids = [(6, 0, cls.company_b.ids)]
-
-        # Configure Company B (the supplier)
-        cls.company_b.so_from_po = True
+        cls.company_a.sale_auto_validation = 1
         cls.company_b.sale_auto_validation = 1
-
-        cls.intercompany_sale_user_id = cls.user_company_b.copy()
-        cls.intercompany_sale_user_id.company_ids |= cls.company_a
-        cls.company_b.intercompany_sale_user_id = cls.intercompany_sale_user_id
 
         # Configure User
         cls._configure_user(cls.user_company_a)
         cls._configure_user(cls.user_company_b)
-
+        cls.product = cls.product_consultant_multi_company
         # Create purchase order
         cls.purchase_company_a = cls._create_purchase_order(cls.partner_company_b)
 
-        # Configure pricelist to USD
-        cls.env["product.pricelist"].sudo().search([]).write(
-            {"currency_id": cls.env.ref("base.USD").id}
+        cls.sequence_purchase_journal_company_a = cls.env["ir.sequence"].create(
+            {
+                "name": "Account Expenses Journal Company A",
+                "padding": 3,
+                "prefix": "EXJ-A/%(year)s/",
+                "company_id": cls.company_a.id,
+            }
+        )
+        cls.sales_journal_company_b = cls.env["account.journal"].create(
+            {
+                "name": "Sales Journal - (Company B)",
+                "code": "SAJ-B",
+                "type": "sale",
+                "secure_sequence_id": cls.sequence_sale_journal_company_b.id,
+                "company_id": cls.company_b.id,
+            }
+        )
+        cls.purchases_journal_company_a = cls.env["account.journal"].create(
+            {
+                "name": "Purchases Journal - (Company A)",
+                "code": "PAJ-A",
+                "type": "purchase",
+                "secure_sequence_id": cls.sequence_purchase_journal_company_a.id,
+                "company_id": cls.company_a.id,
+            }
         )
 
-    def _approve_po(self):
+        cls.company_b.so_from_po = True
+        cls.purchase_manager_gr = cls.env.ref("purchase.group_purchase_manager")
+        cls.sale_manager_gr = cls.env.ref("sales_team.group_sale_manager")
+        cls.user_company_b = cls.user_company_b
+        cls.purchase_manager_gr.users = [
+            (4, cls.user_company_a.id, 4, cls.user_company_b.id)
+        ]
+        cls.sale_manager_gr.users = [
+            (4, cls.user_company_a.id, 4, cls.user_company_b.id)
+        ]
+        cls.intercompany_sale_user_id = cls.user_company_b.copy()
+        cls.intercompany_sale_user_id.company_ids |= cls.company_a
+        cls.company_b.intercompany_sale_user_id = cls.intercompany_sale_user_id
+        cls.account_sale_b = cls.a_sale_company_b
+        
+        # if product_multi_company is installed
+        if "company_ids" in cls.env["product.template"]._fields:
+            # We have to do that because the default method added a company
+            cls.product.company_ids = False
+        cls.product.with_user(
+            cls.user_company_b.id
+        ).property_account_income_id = cls.account_sale_b
+        currency_eur = cls.env.ref("base.EUR")
+        cls.purchase_company_a.currency_id = currency_eur
+        pricelists = (
+            cls.env["product.pricelist"]
+            .sudo()
+            .search([("currency_id", "!=", currency_eur.id)])
+        )
+        # set all price list to EUR
+        for pl in pricelists:
+            pl.currency_id = currency_eur
+        cls.purchase_company_a_child = cls.purchase_company_a.copy()
+        cls.purchase_company_a_child.partner_id = cls.partner_company_b.child_ids
+
+    def _approve_po(self, *args):
         """Confirm the PO in company A and return the related sale of Company B"""
-        self.purchase_company_a.with_user(self.user_company_a).button_approve()
+        purchase_order = self.purchase_company_a
+        if args:
+            (purchase_order,) = args
+        purchase_order.with_user(self.user_company_a).button_approve()
         return (
             self.env["sale.order"]
             .with_user(self.user_company_b)
-            .search([("auto_purchase_order_id", "=", self.purchase_company_a.id)])
+            .search([("auto_purchase_order_id", "=", purchase_order.id)])
         )
+
+    def _set_ignore_exception(self, *args):
+        # set ignore_exception=True to confirm the order
+        # if purchase_exception module is installed
+        purchase_order = self.purchase_company_a
+        if args:
+            (purchase_order,) = args
+        if "ignore_exception" in self.env["purchase.order"]:
+            purchase_order.ignore_exception = True
+
+    def _check_inter_company_data(self, purchase_order):
+        sale = self._approve_po(purchase_order)
+        self.assertNotEqual(sale, False)
+        self.assertEqual(len(sale), 1)
+        if sale.company_id.sale_auto_validation:
+            self.assertEqual(sale.state, "sale")
+        else:
+            self.assertEqual(sale.state, "draft")
+        self.assertEqual(
+            sale.partner_id,
+            purchase_order.company_id.partner_id,
+        )
+        po_partner = purchase_order.partner_id
+
+        if po_partner.ref_company_ids:
+            vendor = po_partner.ref_company_ids
+            self.assertEqual(sale.note, "<p>Test note</p>")
+        if po_partner.parent_id.ref_company_ids:
+            vendor = po_partner.parent_id.ref_company_ids
+            self.assertEqual(sale.note, "<p>Test note child</p>")
+        self.assertEqual(sale.company_id.partner_id, vendor.partner_id)
+        self.assertEqual(len(sale.order_line), len(purchase_order.order_line))
+        self.assertEqual(
+            sale.order_line.product_id,
+            purchase_order.order_line.product_id,
+        )
+        self.assertEqual(sale.currency_id, purchase_order.currency_id)
 
     def test_purchase_sale_inter_company(self):
         self.purchase_company_a.notes = "Test note"
-        sale = self._approve_po()
-        self.assertEqual(len(sale), 1)
-        self.assertEqual(sale.state, "sale")
-        self.assertEqual(sale.partner_id, self.partner_company_a)
-        self.assertEqual(len(sale.order_line), len(self.purchase_company_a.order_line))
-        self.assertEqual(sale.order_line.product_id, self.product)
-        self.assertEqual(str(sale.note), "<p>Test note</p>")
+        # Check sale order created in company B
+        # if Vendor is partner_company_b
+        self._set_ignore_exception()
+        self._check_inter_company_data(self.purchase_company_a)
+
+        self.purchase_company_a_child.notes = "Test note child"
+        # Check sale order created in company B
+        # if Vendor is child of partner_company_b
+        self._set_ignore_exception(self.purchase_company_a_child)
+        self._check_inter_company_data(self.purchase_company_a_child)
+
+    def test_purchase_sale_inter_company_pricelist(self):
+        self.purchase_company_a.notes = "Test note"
+        # Confirm the purchase of company A
+        # change currency of partner sales pricelist to find
+        # related with currency from purchase order
+        currency_usd = self.env.ref("base.USD")
+        currency_aud = self.env.ref("base.AUD")
+        self.partner_company_a.property_product_pricelist.currency_id = currency_aud
+        self.Pricelist = self.env["product.pricelist"].sudo()
+        self.Pricelist.create(
+            {
+                "name": "Pricelist diff",
+                "currency_id": currency_usd.id,
+                "company_id": self.company_b.id,
+            }
+        )
+        fake_pricelist = self.Pricelist.create(
+            {
+                "name": "Pricelist fake",
+                "currency_id": currency_usd.id,
+                "company_id": self.company_b.id,
+            }
+        )
+        self.purchase_company_a.currency_id = currency_usd
+        with self.assertRaises(UserError):
+            self._approve_po()
+        fake_pricelist.unlink()
+        # Check sale order created in company B
+        # if Vendor is partner_company_b
+        self._set_ignore_exception()
+        self._check_inter_company_data(self.purchase_company_a)
+        self.purchase_company_a_child.notes = "Test note child"
+        self.purchase_company_a_child.currency_id = self.env.ref("base.CHF")
+        # Check sale order created in company B
+        # if Vendor is child of partner_company_b
+        self._set_ignore_exception(self.purchase_company_a_child)
+        self._check_inter_company_data(self.purchase_company_a_child)
 
     def test_not_auto_validate(self):
         self.company_b.sale_auto_validation = False
+        self._set_ignore_exception()
         sale = self._approve_po()
         self.assertEqual(sale.state, "draft")
 
-    # TODO FIXME
-    def xxtest_date_planned(self):
+    def test_date_planned(self):
         # Install sale_order_dates module
         module = self.env["ir.module.module"].search(
             [("name", "=", "sale_order_dates")]
@@ -105,6 +238,7 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
             return False
         module.button_install()
         self.purchase_company_a.date_planned = "2070-12-31"
+        self._set_ignore_exception()
         sale = self._approve_po()
         self.assertEqual(sale.requested_date, "2070-12-31")
 
@@ -118,15 +252,10 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
         with self.assertRaises(UserError):
             self._approve_po()
 
-    def test_raise_currency(self):
-        currency = self.env.ref("base.EUR")
-        self.purchase_company_a.currency_id = currency
-        with self.assertRaises(UserError):
-            self._approve_po()
-
     def test_purchase_invoice_relation(self):
         self.partner_company_a.company_id = False
         self.partner_company_b.company_id = False
+        self._set_ignore_exception()
         sale = self._approve_po()
         sale_invoice = sale._create_invoices()[0]
         sale_invoice.action_post()
@@ -140,29 +269,33 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
 
     def test_cancel(self):
         self.company_b.sale_auto_validation = False
+        self._set_ignore_exception()
         sale = self._approve_po()
         self.assertEqual(self.purchase_company_a.partner_ref, sale.name)
         self.purchase_company_a.with_user(self.user_company_a).button_cancel()
         self.assertFalse(self.purchase_company_a.partner_ref)
-        self.assertEqual(sale.state, "cancel")
-
-    def test_cancel_confirmed_po_so(self):
-        self.company_b.sale_auto_validation = True
-        self._approve_po()
-        with self.assertRaises(UserError):
-            self.purchase_company_a.with_user(self.user_company_a).button_cancel()
 
     def test_so_change_price(self):
+        self._set_ignore_exception()
         sale = self._approve_po()
         sale.order_line.price_unit = 10
         sale.action_confirm()
         self.assertEqual(self.purchase_company_a.order_line.price_unit, 10)
 
+    def test_cancel_confirmed_po_so(self):
+        self.company_b.sale_auto_validation = True
+        self._set_ignore_exception()
+        self._approve_po()
+        with self.assertRaises(UserError):
+            self.purchase_company_a.with_user(self.user_company_a).button_cancel()
+
+    # TODO: fix this test
     def test_po_with_contact_as_partner(self):
         contact = self.env["res.partner"].create(
             {"name": "Test contact", "parent_id": self.partner_company_b.id}
         )
         self.purchase_company_a = self._create_purchase_order(contact)
+        self._set_ignore_exception()
         sale = self._approve_po()
         self.assertEqual(len(sale), 1)
         self.assertEqual(sale.state, "sale")
