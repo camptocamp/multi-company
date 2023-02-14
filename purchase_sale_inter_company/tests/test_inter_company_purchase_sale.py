@@ -47,34 +47,80 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
                 cls.env.context, tracking_disable=True, test_queue_job_no_delay=1
             )
         )
-
-        cls.product = cls.product_consultant_multi_company
-
         if "company_ids" in cls.env["res.partner"]._fields:
             # We have to do that because the default method added a company
             cls.partner_company_a.company_ids = [(6, 0, cls.company_a.ids)]
             cls.partner_company_b.company_ids = [(6, 0, cls.company_b.ids)]
-
-        # Configure Company B (the supplier)
-        cls.company_b.so_from_po = True
+        cls.company_a.sale_auto_validation = 1
         cls.company_b.sale_auto_validation = 1
-
-        cls.intercompany_sale_user_id = cls.user_company_b.copy()
-        cls.intercompany_sale_user_id.company_ids |= cls.company_a
-        cls.company_b.intercompany_sale_user_id = cls.intercompany_sale_user_id
 
         # Configure User
         cls._configure_user(cls.user_company_a)
         cls._configure_user(cls.user_company_b)
-
+        cls.product = cls.product_consultant_multi_company
         # Create purchase order
         cls.purchase_company_a = cls._create_purchase_order(cls.partner_company_b)
 
-        # Configure pricelist to EUR
-        cls.env["product.pricelist"].sudo().search([]).write(
-            {"currency_id": cls.env.ref("base.EUR").id}
+        cls.sequence_purchase_journal_company_a = cls.env["ir.sequence"].create(
+            {
+                "name": "Account Expenses Journal Company A",
+                "padding": 3,
+                "prefix": "EXJ-A/%(year)s/",
+                "company_id": cls.company_a.id,
+            }
         )
-        cls.purchase_company_a_child = cls._create_purchase_order(cls.partner_company_b)
+        cls.sales_journal_company_b = cls.env["account.journal"].create(
+            {
+                "name": "Sales Journal - (Company B)",
+                "code": "SAJ-B",
+                "type": "sale",
+                "secure_sequence_id": cls.sequence_sale_journal_company_b.id,
+                "company_id": cls.company_b.id,
+            }
+        )
+        cls.purchases_journal_company_a = cls.env["account.journal"].create(
+            {
+                "name": "Purchases Journal - (Company A)",
+                "code": "PAJ-A",
+                "type": "purchase",
+                "secure_sequence_id": cls.sequence_purchase_journal_company_a.id,
+                "company_id": cls.company_a.id,
+            }
+        )
+
+        cls.company_b.so_from_po = True
+        cls.purchase_manager_gr = cls.env.ref("purchase.group_purchase_manager")
+        cls.sale_manager_gr = cls.env.ref("sales_team.group_sale_manager")
+        cls.user_company_b = cls.user_company_b
+        cls.purchase_manager_gr.users = [
+            (4, cls.user_company_a.id, 4, cls.user_company_b.id)
+        ]
+        cls.sale_manager_gr.users = [
+            (4, cls.user_company_a.id, 4, cls.user_company_b.id)
+        ]
+        cls.intercompany_sale_user_id = cls.user_company_b.copy()
+        cls.intercompany_sale_user_id.company_ids |= cls.company_a
+        cls.company_b.intercompany_sale_user_id = cls.intercompany_sale_user_id
+        cls.account_sale_b = cls.a_sale_company_b
+        
+        # if product_multi_company is installed
+        if "company_ids" in cls.env["product.template"]._fields:
+            # We have to do that because the default method added a company
+            cls.product.company_ids = False
+        cls.product.with_user(
+            cls.user_company_b.id
+        ).property_account_income_id = cls.account_sale_b
+        currency_eur = cls.env.ref("base.EUR")
+        cls.purchase_company_a.currency_id = currency_eur
+        pricelists = (
+            cls.env["product.pricelist"]
+            .sudo()
+            .search([("currency_id", "!=", currency_eur.id)])
+        )
+        # set all price list to EUR
+        for pl in pricelists:
+            pl.currency_id = currency_eur
+        cls.purchase_company_a_child = cls.purchase_company_a.copy()
         cls.purchase_company_a_child.partner_id = cls.partner_company_b.child_ids
 
     def _approve_po(self, *args):
@@ -243,6 +289,7 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
         with self.assertRaises(UserError):
             self.purchase_company_a.with_user(self.user_company_a).button_cancel()
 
+    # TODO: fix this test
     def test_po_with_contact_as_partner(self):
         contact = self.env["res.partner"].create(
             {"name": "Test contact", "parent_id": self.partner_company_b.id}
