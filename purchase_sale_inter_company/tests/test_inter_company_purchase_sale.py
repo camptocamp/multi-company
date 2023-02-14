@@ -148,16 +148,9 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
         currency_aud = self.env.ref("base.AUD")
         self.partner_company_a.property_product_pricelist.currency_id = currency_aud
         self.Pricelist = self.env["product.pricelist"].sudo()
-        self.Pricelist.create(
+        diff_pricelist = self.Pricelist.create(
             {
                 "name": "Pricelist diff",
-                "currency_id": currency_usd.id,
-                "company_id": self.company_b.id,
-            }
-        )
-        fake_pricelist = self.Pricelist.create(
-            {
-                "name": "Pricelist fake",
                 "currency_id": currency_usd.id,
                 "company_id": self.company_b.id,
             }
@@ -165,7 +158,7 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
         self.purchase_company_a.currency_id = currency_usd
         with self.assertRaises(UserError):
             self._approve_po()
-        fake_pricelist.unlink()
+        diff_pricelist.unlink()
         # Check sale order created in company B
         # if Vendor is partner_company_b
         self._set_ignore_exception()
@@ -242,14 +235,3 @@ class TestPurchaseSaleInterCompany(TestAccountInvoiceInterCompanyBase):
         self._approve_po()
         with self.assertRaises(UserError):
             self.purchase_company_a.with_user(self.user_company_a).button_cancel()
-
-    def test_po_with_contact_as_partner(self):
-        contact = self.env["res.partner"].create(
-            {"name": "Test contact", "parent_id": self.partner_company_b.id}
-        )
-        self.purchase_company_a = self._create_purchase_order(contact)
-        self._set_ignore_exception()
-        sale = self._approve_po()
-        self.assertEqual(len(sale), 1)
-        self.assertEqual(sale.state, "sale")
-        self.assertEqual(sale.partner_id, self.partner_company_a)

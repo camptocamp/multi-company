@@ -89,6 +89,7 @@ class PurchaseOrder(models.Model):
                     ("company_id", "=", dest_company.id),
                 ]
             )
+            print([p.name for p in related_pricelist])
             if len(related_pricelist) > 1:
                 raise UserError(
                     _(
