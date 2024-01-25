@@ -1,4 +1,4 @@
-# Copyright 2020 Camptocamp SA
+# Copyright 2024 Camptocamp SA
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl)
 {
     "name": "sale stock warehouse multicompany",
@@ -12,8 +12,9 @@
     "application": False,
     "installable": True,
     "depends": ["sale_stock", "base_multi_company"],
+    "post_init_hook": "post_init_hook",
     "data": [
         "views/stock_warehouse_views.xml",
-        "views/stock_location_views.xml",
+        "views/stock_route_views.xml",
     ],
 }
