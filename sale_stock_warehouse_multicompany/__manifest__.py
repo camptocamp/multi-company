@@ -2,7 +2,7 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl)
 {
     "name": "sale stock warehouse multicompany",
-    "summary": "Manage sale of packaging",
+    "summary": "Sale stock warehouse multicompany",
     "version": "16.0.1.0.0",
     "development_status": "Alpha",
     "category": "Warehouse Management",
@@ -11,10 +11,8 @@
     "license": "AGPL-3",
     "application": False,
     "installable": True,
-    "depends": ["sale_stock", "base_multi_company"],
-    "post_init_hook": "post_init_hook",
+    "depends": ["sale_stock"],
     "data": [
         "views/stock_warehouse_views.xml",
-        "views/stock_route_views.xml",
     ],
 }

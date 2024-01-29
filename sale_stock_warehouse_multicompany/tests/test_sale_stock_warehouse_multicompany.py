@@ -42,3 +42,4 @@ class TestPartnerMultiCompany(common.TransactionCase):
                 }
             )
         )
+        self.sale_order.with_company(self.company_1).action_confirm()
