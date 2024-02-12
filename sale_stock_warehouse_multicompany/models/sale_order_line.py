@@ -9,7 +9,7 @@ class SaleOrderLine(models.Model):
 
     route_id = fields.Many2one(
         "stock.route",
-        domain="[('company_ids', 'in', company_id)]",
+        domain="[('company_ids', 'in', company_id), ('sale_selectable','=', True)]",
         check_company=False,
     )
 
