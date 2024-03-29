@@ -31,10 +31,13 @@ class PurchaseOrderLine(models.Model):
         """Sync lines between an confirmed unlocked purchase and a confirmed unlocked
         sale order"""
         lines = super().create(vals_list)
+        not_allowed_states = ["cancel", "done"]
+        if self.env.context.get("allow_update_locked_sales", False):
+            not_allowed_states.remove("done")
         for order in lines.order_id.filtered(
             lambda x: x.state == "purchase" and x.intercompany_sale_order_id
         ):
-            if order.intercompany_sale_order_id.sudo().state in {"cancel", "done"}:
+            if order.intercompany_sale_order_id.sudo().state in not_allowed_states:
                 raise UserError(
                     _(
                         "You can't change this purchase order as the corresponding "
@@ -87,7 +90,10 @@ class PurchaseOrderLine(models.Model):
         ).sudo()
         if not sale_lines:
             return res
-        closed_sale_lines = sale_lines.filtered(lambda x: x.state != "sale")
+        state = ["sale"]
+        if self.env.context.get("allow_update_locked_sales", False):
+            state.append("done")
+        closed_sale_lines = sale_lines.filtered(lambda x: x.state not in state)
         if closed_sale_lines:
             raise UserError(
                 _(
