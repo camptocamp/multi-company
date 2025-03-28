@@ -105,12 +105,14 @@ class TestIntercompanyDelivery(TransactionCase):
         self.assertEqual(len(counterpart_picking), 1)
         self.assertEqual(counterpart_picking.counterpart_of_picking_id, picking)
         self.assertEqual(len(counterpart_picking.move_ids), len(picking.move_ids))
-        for cp_move, move in zip(counterpart_picking.move_ids, picking.move_ids):
+        for cp_move, move in zip(
+            counterpart_picking.move_ids, picking.move_ids, strict=False
+        ):
             self.assertEqual(cp_move.counterpart_of_move_id, move)
         self.assertEqual(
             len(counterpart_picking.move_line_ids), len(picking.move_line_ids)
         )
         for cp_line, line in zip(
-            counterpart_picking.move_line_ids, picking.move_line_ids
+            counterpart_picking.move_line_ids, picking.move_line_ids, strict=False
         ):
             self.assertEqual(cp_line.counterpart_of_line_id, line)
